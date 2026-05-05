@@ -1,0 +1,60 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS 4
+#define ARRAY_SIZE 100
+
+// Структура фільтра Кальмана
+struct KalmanFilter {
+    float q; // Шум процесу (Process noise) - як швидко може змінюватися температура
+    float r; // Шум вимірювання (Measurement noise) - похибка датчика
+    float x; // Оцінене значення (Синтезована температура)
+    float p; // Оцінка похибки (Estimation error)
+    float k; // Коефіцієнт Кальмана (Kalman gain)
+};
+
+// Ініціалізація параметрів (можна підбирати під свій датчик)
+KalmanFilter kf = {0.05, 0.5, 0, 1.0, 0};
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+float rawData[ARRAY_SIZE];
+float kalmanData[ARRAY_SIZE];
+
+float updateKalman(KalmanFilter* f, float measurement) {
+    // Крок прогнозу
+    f->p = f->p + f->q;
+
+    // Крок корекції
+    f->k = f->p / (f->p + f->r);
+    f->x = f->x + f->k * (measurement - f->x);
+    f->p = (1 - f->k) * f->p;
+
+    return f->x;
+}
+
+void setup() {
+    Serial.begin(115200);
+    sensors.begin();
+    
+    Serial.println("Збір даних для Кальмана...");
+    
+    // Перше зчитування для ініціалізації початкового стану
+    sensors.requestTemperatures();
+    kf.x = sensors.getTempCByIndex(0);
+
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        sensors.requestTemperatures();
+        rawData[i] = sensors.getTempCByIndex(0);
+        
+        // Фільтруємо "на льоту" або після збору (тут - на льоту)
+        kalmanData[i] = updateKalman(&kf, rawData[i]);
+        
+        Serial.print("Raw: "); Serial.print(rawData[i]);
+        Serial.print(" | Kalman: "); Serial.println(kalmanData[i]);
+        delay(1000); 
+    }
+}
+
+void loop() {}
