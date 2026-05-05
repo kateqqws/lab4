@@ -1,0 +1,78 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS 4
+#define ARRAY_SIZE 100
+#define WINDOW_SIZE 5
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+float rawData[ARRAY_SIZE];
+float filteredData[ARRAY_SIZE];
+
+// Функція сортування (Bubble Sort для простоти на невеликих вікнах)
+void sort(float* a, int n) {
+    for (int i = 0; i < n - 1; ++i) {
+        for (int j = 0; j < n - i - 1; ++j) {
+            if (a[j] > a[j + 1]) {
+                float temp = a[j];
+                a[j] = a[j + 1];
+                a[j + 1] = temp;
+            }
+        }
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    sensors.begin();
+    
+    Serial.println("Збір даних (100 значень)...");
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        sensors.requestTemperatures();
+        rawData[i] = sensors.getTempCByIndex(0);
+        Serial.print("Data "); Serial.print(i); Serial.print(": "); Serial.println(rawData[i]);
+        delay(1000); // Інтервал 1 секунда
+    }
+
+    applyMedianFilter();
+    printResults();
+}
+
+void applyMedianFilter() {
+    int margin = WINDOW_SIZE / 2;
+    
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        // Обробка країв: якщо вікно виходить за межі, залишаємо як є
+        if (i < margin || i >= ARRAY_SIZE - margin) {
+            filteredData[i] = rawData[i];
+            continue;
+        }
+
+        // Заповнюємо тимчасовий масив для вікна
+        float window[WINDOW_SIZE];
+        for (int j = 0; j < WINDOW_SIZE; j++) {
+            window[j] = rawData[i - margin + j];
+        }
+
+        // Сортуємо вікно
+        sort(window, WINDOW_SIZE);
+
+        // Беремо середнє значення (медіану)
+        filteredData[i] = window[WINDOW_SIZE / 2];
+    }
+}
+
+void printResults() {
+    Serial.println("\n--- Результати (Raw vs Filtered) ---");
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        Serial.print(rawData[i]);
+        Serial.print(",");
+        Serial.println(filteredData[i]);
+    }
+}
+
+void loop() {
+    // В даному завданні цикл порожній
+}
