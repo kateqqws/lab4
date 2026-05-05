@@ -1,0 +1,87 @@
+#include <Wire.h>
+#include <SPIFFS.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Adafruit_BMP280.h>
+
+// Конфігурація пінів
+#define ONE_WIRE_BUS 4
+#define LDR_PIN 34
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature ds18b20(&oneWire);
+Adafruit_BMP280 bmp;
+
+const char* filename = "/log.csv";
+unsigned long lastMeasureTime = 0;
+const long interval = 5000; // Інтервал 5 секунд
+int count = 0;
+const int maxEntries = 10; // Скільки записів зробити перед тим як "відкрити" файл
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  // 1. Ініціалізація файлової системи SPIFFS
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Помилка SPIFFS!");
+    return;
+  }
+  
+  // Очищуємо старий файл при старті, щоб скріншот був чистим
+  SPIFFS.remove(filename);
+
+  // 2. Ініціалізація датчиків
+  ds18b20.begin();
+  if (!bmp.begin(0x76)) {
+    Serial.println("BMP280 не знайдено!");
+  }
+
+  // Створюємо заголовок CSV
+  File file = SPIFFS.open(filename, FILE_WRITE);
+  if (file) {
+    file.println("Time_ms,Temp_DS,Temp_BMP,Press_hPa,Light_ADC");
+    file.close();
+  }
+  
+  Serial.println("Збір даних розпочато...");
+}
+
+void loop() {
+  if (millis() - lastMeasureTime >= interval && count < maxEntries) {
+    lastMeasureTime = millis();
+    
+    // Зчитування даних
+    ds18b20.requestTemperatures();
+    float t1 = ds18b20.getTempCByIndex(0);
+    float t2 = bmp.readTemperature();
+    float p = bmp.readPressure() / 100.0F;
+    int light = analogRead(LDR_PIN);
+    
+    // Формування рядка
+    String dataRow = String(millis()) + "," + String(t1) + "," + String(t2) + "," + String(p) + "," + String(light);
+    
+    // 3. Запис у файл (формат CSV)
+    File file = SPIFFS.open(filename, FILE_APPEND);
+    if (file) {
+      file.println(dataRow);
+      file.close();
+      Serial.println("Запис " + String(count + 1) + ": " + dataRow);
+      count++;
+    }
+
+    // 4. Програмне відкриття файлу після завершення збору
+    if (count == maxEntries) {
+      Serial.println("\n--- ПРОГРАМНЕ ВІДКРИТТЯ ФАЙЛУ SPIFFS ---");
+      File readFile = SPIFFS.open(filename, FILE_READ);
+      if (readFile) {
+        while (readFile.available()) {
+          Serial.write(readFile.read()); // Виводимо вміст файлу
+        }
+        readFile.close();
+      }
+      Serial.println("----------------------------------------");
+      Serial.println("Тепер зробіть скріншот вікна Serial Monitor!");
+    }
+  }
+}
